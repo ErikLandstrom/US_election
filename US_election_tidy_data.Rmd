@@ -1,0 +1,47 @@
+---
+title: "Tidy US election and census data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This is my project for testing machine learning techniques in order to predict US election outcomes from census data.
+
+This markdown is mainly for tidying data. 
+
+# Load libraries
+
+```{r libraries, message = FALSE}
+library(tidyverse)
+```
+
+# Read US census data
+
+Read US census data from 2015 (data from [www.kaggle.com](https://www.kaggle.com/muonneutrino/us-census-demographic-data)).
+
+```{r read census data}
+census_data <- read_csv("data/acs2015_county_data.csv")
+
+# Print first rows
+head(census_data)
+
+# Get a glimpse of the data
+dim(census_data)
+glimpse(census_data)
+```
+
+Read 2016 election results (data taken from [GitHub user tonmcg](https://github.com/tonmcg/US_County_Level_Election_Results_08-16/blob/master/2016_US_County_Level_Presidential_Results.csv)).
+
+```{r read election data}
+election_data <- read_tsv("data/US_2016_election_results.txt")
+
+# Print first rows
+head(election_data)
+
+# Get a glimpse of the data
+dim(election_data)
+
+```
+
