@@ -1,6 +1,16 @@
 ---
 title: "Tidy US election and census data"
-output: html_document
+author: "Erik Ländström"
+date: '2020-01-29'
+output: 
+  html_document:
+    code_folding: show
+    toc: yes
+    toc_float: yes
+    toc_depth: 4
+    keep_md: yes
+    theme: cerulean
+    number_sections: yes
 ---
 
 ```{r setup, include=FALSE}
@@ -15,8 +25,16 @@ This markdown is mainly for tidying data.
 
 ```{r libraries, message = FALSE}
 library(tidyverse)
-library()
+library(knitr)
+library(kableExtra)
 ```
+
+## Load functions
+
+```{r functions}
+source("functions/table_styling.R")
+```
+
 
 # Read US census data
 
@@ -26,7 +44,8 @@ Read US census data from 2015 (data from [www.kaggle.com](https://www.kaggle.com
 census_data <- read_csv("data/acs2015_county_data.csv")
 
 # Print first rows
-head(census_data)
+head(census_data) %>% 
+  table_styling()
 
 # Get a glimpse of the data
 dim(census_data)
