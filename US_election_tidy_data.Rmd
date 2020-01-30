@@ -15,6 +15,7 @@ This markdown is mainly for tidying data.
 
 ```{r libraries, message = FALSE}
 library(tidyverse)
+library()
 ```
 
 # Read US census data
@@ -32,16 +33,180 @@ dim(census_data)
 glimpse(census_data)
 ```
 
+The census data has `3220` observations and `37` variables.
+
 Read 2016 election results (data taken from [GitHub user tonmcg](https://github.com/tonmcg/US_County_Level_Election_Results_08-16/blob/master/2016_US_County_Level_Presidential_Results.csv)).
 
 ```{r read election data}
-election_data <- read_tsv("data/US_2016_election_results.txt")
+election_data <- read_csv("data/US_2016_election_results.txt")
 
 # Print first rows
 head(election_data)
 
 # Get a glimpse of the data
 dim(election_data)
-
+glimpse(election_data)
 ```
+
+The census data has `3141` observations and `11` variables, this is ``r 3220 - 3141``
+fewer observations than in the census data. Let's investigate!
+
+# Tidy data
+
+## Prepare data sets for join
+
+Check how many states are included in each data set.
+
+```{r pre join 1}
+# Census data
+census_data %>% 
+  group_by(State) %>% 
+  summarise(n = n())
+
+# Election data
+election_data %>% 
+  group_by(state_abbr) %>% 
+  summarise(n = n())
+```
+
+The census data includes Puerto Rico, who can't vote in elections. So I will 
+remove these observations from the `census_data`.
+
+```{r puerto rico}
+census_data_voting <- census_data %>% 
+  filter(State != "Puerto Rico")
+
+# Check dimensions
+dim(census_data_voting)
+```
+
+There's still one more observation in `census_data_voting`. Check it out with
+an `anti_join`.
+
+```{r antijoin}
+# First change name of fips code column
+# I will also remove the first column X1
+election_data_trimmed <- election_data %>% 
+  select(-X1) %>% 
+  rename(CensusId = combined_fips)
+
+# Use anti_join to join the datasets
+anti_join(election_data_trimmed, census_data_voting, by = "CensusId")
+anti_join(census_data_voting, election_data_trimmed, by = "CensusId")
+```
+
+There are 5 counties that are not shared between the two data sets.
+
+Use a `full_join` to merge the two data sets.
+
+```{r full_join}
+data_joined <- full_join(census_data_voting, election_data_trimmed, by = "CensusId")
+
+# Check stats
+dim(data_joined)
+glimpse(data_joined)
+```
+
+We now have a dataset with `3144` observations and `46` variables. However,
+this is two more than in the census data so there might be some missing values.
+
+Check for missing values and remove rows including `na`s.
+
+```{r missing values}
+data_joined %>% 
+  filter(is.na(total_votes))
+
+data_joined %>% 
+  filter(is.na(TotalPop))
+
+# Remove observations with NAs
+data_trimmed <- data_joined %>% 
+  filter(!is.na(TotalPop)) %>% 
+  filter(!is.na(total_votes))
+
+# Check dimensions
+dim(data_trimmed)
+```
+
+There are five observations that are specific to one dataset and which have been
+removed. However, the county in South Dakota seems to be the same with similar 
+name and different `CensusId`.
+
+Let's see if we can join them!
+
+```{r south dakota}
+# Filter out the SD county in census
+sd_census <- census_data_voting %>% 
+  filter(County == "Oglala Lakota")
+
+# Append voting data to Oglala Lakota
+sd_votes <- cbind(sd_census, election_data_trimmed %>% 
+        filter(county_name == "Oglala County") %>% 
+          select(-CensusId))
+
+# Append observation to the dataset
+data <- rbind(data_trimmed, sd_votes)
+dim(data)
+```
+
+I have no idea why there is one more Hawaii county in the census data. The data
+from Alaska seems different between the two data sets.
+
+## Alaska!
+
+```{r alaska 1} 
+# Filter for Alaska
+data %>% 
+  filter(State == "Alaska")
+```
+
+The voting data is the same for all counties in Alaska, while the census data
+is different. I either must remove all Alaska counties or count Alaska as a
+state. Since much of the data is relative or an average it would be difficult
+to know if all the data is correct, so I will simply remove them.
+
+```{r alaska 2}
+# Remove Alaska observations
+tidy_data <- data %>% 
+  filter(State != "Alaska")
+dim(tidy_data)
+```
+
+Our final dataset includes `50` states including District of Colombia and
+`3112` observations and `46` columns. 
+
+# Create binary column for who one each country
+
+For later machine learning purposes.
+
+```{r won}
+tidy_data %>% 
+  mutate(won = if_else(votes_gop > votes_dem, "Trump", "Clinton"))
+```
+
+# Save data
+
+```{r save data, eval = FALSE}
+write_tsv(tidy_data, "data/US_2016_election_and_2015_census_data.tsv")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
