@@ -1,0 +1,84 @@
+---
+title: "US election 2016 - Data exploration"
+author: "Erik Ländström"
+date: '2020-01-30'
+output: 
+  html_document:
+    code_folding: show
+    toc: yes
+    toc_float: yes
+    toc_depth: 4
+    keep_md: yes
+    theme: cerulean
+    number_sections: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load libraries
+
+```{r libraries, message = FALSE}
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+```
+
+## Load functions
+
+```{r functions}
+source("functions/table_styling.R")
+source("functions/calculate_optimal_bin_number.R")
+```
+
+## Read data
+
+```{r read_data}
+data <- read_tsv("data/US_2016_election_and_2015_census_data.tsv")
+```
+
+# Data exploration
+
+The dataset, with over 40 columns, is too big for a pairplot to be used. 
+However, there are "groups" of variables that can be evaluated together.
+
+## Population and demographics
+
+Make a histogram of total population.
+
+```{r pop hist}
+# Calculate optimal number of bins
+b <- calculate_optimal_bin_number(data %>% 
+                                                                        select(TotalPop) %>% 
+                                                                        mutate(TotalPop = log10(TotalPop)) %>% 
+                                                                        as_vector())
+# Plot a log10(TotalPop) histogram
+data %>% 
+  ggplot(aes(log10(TotalPop))) +
+  geom_histogram(aes(fill = won), bins = b) +
+  scale_y_continuous(limits = c(0, 250), expand = c(0, 0)) + # This is because I want 0 to be at the x axis
+  theme_classic()
+```
+
+It seems like Trump won a lot more counties than Clinton, and Clinton seems to
+be more succesful in densely populated counties.
+
+It would be interesting to see the average population density and demographics
+by the candidate that won the county.
+
+```{r average pop}
+data %>% 
+  select(TotalPop:Pacific, won) %>%
+  group_by(won) %>% 
+  summarise_all("mean") %>% 
+  kable(caption = "Means for demographic variables for counties that each candidate won.") %>% 
+  table_styling()
+```
+
+It seems like that not only did Clinton win more popolous countries but these
+counties tended to be less white and a higher degree of minorites, i.e. they 
+were more demographically diverse.
+
+
+
