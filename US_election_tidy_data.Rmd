@@ -199,7 +199,7 @@ Our final dataset includes `50` states including District of Colombia and
 For later machine learning purposes.
 
 ```{r won}
-tidy_data %>% 
+tidy_data <- tidy_data %>% 
   mutate(won = if_else(votes_gop > votes_dem, "Trump", "Clinton"))
 ```
 
