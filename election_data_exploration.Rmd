@@ -23,6 +23,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(knitr)
 library(kableExtra)
+library(caret)
 ```
 
 ## Load functions
@@ -80,5 +81,278 @@ It seems like that not only did Clinton win more popolous countries but these
 counties tended to be less white and a higher degree of minorites, i.e. they 
 were more demographically diverse.
 
+## Income, poverty and type of work
+
+### Income
+
+`Income` is the median household income.
+
+```{r income}
+# Frequency are plots
+ggplot(data, aes(Income)) + geom_area(aes(y = ..count.., fill = won, group = won), stat = "bin")
+
+# Log10
+ggplot(data, aes(log10(Income))) + geom_area(aes(y = ..count.., fill = won, group = won), stat = "bin")
+```
+
+Median income doesn*t seem to be that predictive of voting patterns.
+
+Similar plots for `IncomePerCap`.
+
+```{r capita}
+data %>% 
+  ggplot(aes(IncomePerCap)) +
+  geom_histogram(aes(fill = won))
+
+data %>% 
+  ggplot(aes(log10(IncomePerCap))) +
+  geom_histogram(aes(fill = won))
+```
+
+Both median household income and income per capita doesn't seem to correlate 
+with voting patterns. Although among the richest counties there might be a 
+tendency to vote for the democratic nominee.
+
+### Poverty
+
+```{r poverty}
+data %>% 
+  ggplot(aes(Poverty)) +
+  geom_histogram(aes(fill = won))
+```
+
+`Poverty` shows similar patterns.
+
+### Type of work and commute
+
+```{r job type}
+data %>% 
+  select(Professional:Unemployment, won) %>% 
+  group_by(won) %>% 
+  summarise_all("mean") %>% 
+  kable() %>% 
+  table_styling()
+```
+
+There are some differences in the averages for these variables, it seems like
+counties that voted for Clinton were more educated and lived in more urban 
+areas.
+
+# Machine learning
+
+## PCA
+
+## Preprocessing 
+
+Remove all election data except `won`.
+
+```{r preprocess}
+data_ml <- data %>% 
+  select(CensusId:Unemployment, won) %>% 
+  mutate(CensusId = as.character(CensusId))
+
+glimpse(data_ml)
+```
+
+Scale and center data using `caret`'s preprocess method.
+
+```{r scale}
+# Define ML method (center, scale)
+pre_proc_values <- preProcess(data_ml, method = c("center", "scale"))
 
 
+data_processed <- predict(pre_proc_values, data_ml)
+glimpse(data_processed)
+
+```
+
+Convert outcome to binary.
+
+```{r ids}
+data_processed <- data_processed %>% 
+  mutate(won = if_else(won == "Clinton", 1, 0))
+
+id <- data_ml$CensusId
+data_processed <- data_processed %>% 
+  mutate(CensusId = NULL,
+         County = NULL)
+
+glimpse(data_processed)
+```
+
+Create dummy variables using One-hot encoding for `State`.
+
+```{r onehot encode}
+# Make State into a factor
+data_processed <- data_processed %>% 
+  mutate(State = as_factor(State))
+
+# Converting every categorical variable to numerical using dummy variables
+dummies <- dummyVars(" ~ .", data_processed, fullRank = FALSE)
+data_transformed <- as_tibble(predict(dummies, newdata = data_processed))
+
+glimpse(data_transformed)
+```
+
+Change `won` back into a factor.
+
+```{r factor}
+data_transformed <- data_transformed %>% 
+  mutate(won = as_factor(won))
+```
+
+### Splitting data
+
+Split data into training and test sets.
+
+```{r split}
+set.seed(2354)
+index <- createDataPartition(data_transformed$won, p = 0.75, list = FALSE)#
+
+training_set <- data_transformed[index, ]
+dim(training_set)
+
+test_set <- data_transformed[-index, ]
+dim(test_set)
+```
+
+## Random forest
+
+Use `caret` to do a random forest classification
+
+```{r rf first model, messages = FALSE}
+modelLookup("rf")
+
+fitControl <- trainControl(
+  method = "repeatedcv",
+  number = 5,
+  repeats = 5,
+  verboseIter = TRUE)
+
+#Creating grid
+grid <- expand.grid(mtry = c(1, 2, 3, 4, 5, 10))
+grid
+
+
+
+set.seed(23546)
+# training the model
+first_rf_model <- train(training_set %>% 
+                          select(-won),
+                        training_set$won,
+                        method='rf',
+                        trControl=fitControl,
+                        tuneGrid=grid)
+```
+
+__mtry__: Number of variables randomly sampled as candidates at each split.
+
+```{r rf model summary}
+# Summarize the model
+print(first_rf_model)
+
+plot(first_rf_model)
+
+# Check execution times
+first_rf_model$times
+```
+
+`everything` is for the entire call to train whereas `final` is for the final 
+model fit.
+
+This was a very slow model fitting and parameter tuning, due to the many 
+different variables used. The final parameters used for the random forest model
+is going to be __mtry__ = 10.
+
+I'm not entirely sure if `train` refitted with the best tuning parameter on the 
+whole training set is a good idea, so I will try that now.
+
+```{r refit}
+set.seed(23546)
+# training the model with best parameters
+rf_model_best_parameter <- train(training_set %>% 
+                          select(-won),
+                        training_set$won,
+                        method='rf',
+                        trControl = trainControl(method = "none",
+                                                 verboseIter = TRUE),
+                        tuneGrid= expand.grid(mtry = 10))
+
+print(rf_model_best_parameter)
+
+rf_model_best_parameter$times
+```
+
+I will compare these two models on the test set.
+
+### Variable importance
+
+Check variable importances for both models.
+
+```{r importance}
+varImp(object = first_rf_model)
+
+plot(varImp(object = first_rf_model))
+
+varImp(object = rf_model_best_parameter)
+
+plot(varImp(object = rf_model_best_parameter))
+```
+
+__White__ is the variable that is most important, followed by __Transit__ 
+(indicating urban areas I think), __Black__ and __Asian__. There is not much 
+different between the models here.
+
+I will do another project trying with fewer features since many of the variables
+are not very important (especially the dummy variables).
+
+### Predictions
+
+Apparently there were some missing values in this row, which has to be removed
+before predicting. I should have checked for this before training the model. For
+now I will just remove the row, but I should redo it next time and impute the
+`NA`s using KNN. 
+
+```{r rm na}
+sum(is.na(test_set))
+
+which(is.na(test_set), arr.ind=TRUE)
+
+test_set[664, ]
+
+# Drop row with missing values
+test_set <- test_set %>% 
+  drop_na(Income)
+
+```
+
+Predict who won each county on the test set.
+
+```{r predict first}
+# Predictions using the first model
+predictions_first <- predict.train(object = first_rf_model,
+                                   test_set %>% 
+                                     select(-won),
+                                   type = "raw")
+
+table(predictions_first)
+
+confusionMatrix(predictions_first, test_set$won)
+```
+
+```{r predictions refit}
+# Predictions using the refitted model
+predictions_refit <- predict.train(object = rf_model_best_parameter,
+                                   test_set %>% 
+                                     select(-won),
+                                   type = "raw")
+
+table(predictions_refit)
+
+confusionMatrix(predictions_first, test_set$won)
+```
+
+The two models seem to have the same accuracy, so no need for retraining the 
+model. I will redo the training, including feature selection and for future
+machine learning I should always check if there are missing values before
+doing anything else.
